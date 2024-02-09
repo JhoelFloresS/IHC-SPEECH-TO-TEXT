@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:googleapis/dialogflow/v3.dart';
+import 'package:voice_app/bloc/dialoflow/dialogflow_bloc.dart';
+import 'package:voice_app/widgets/widgets.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -10,20 +15,63 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final SpeechToText _speechToText = SpeechToText();
+  FlutterTts _flutterTts = FlutterTts();
 
   bool _speechEnabled = false;
   String _wordsSpoken = "";
   double _confidenceLevel = 0;
 
+  List<Map> _voices = [];
+  Map? _currentVoice;
+
+  late DialogflowBloc dialogflowApi;
+
+  // int? _currentWordStart, _currentWordEnd;
+
   @override
   void initState() {
     super.initState();
+    dialogflowApi = BlocProvider.of<DialogflowBloc>(context);
     initSpeech();
+    initTTS();
+    dialogflowApi.start();
   }
 
   void initSpeech() async {
     _speechEnabled = await _speechToText.initialize();
+    _speechToText.statusListener = (status) async{
+      if (status == SpeechToText.doneStatus){
+        String response = await dialogflowApi.sendMessage(_wordsSpoken);
+
+        // _flutterTts.speak(response);
+      }
+    };
     setState(() {});
+  }
+
+  void initTTS() {
+    _flutterTts.setProgressHandler((text, start, end, word) {
+      // print("Progress: $start, $end, $word \n");
+    });
+    _flutterTts.setSpeechRate(0.5).then((value) => null);
+    _flutterTts.getVoices.then((data) {
+      try {
+        List<Map> voices = List<Map>.from(data);
+        setState(() {
+          _voices =
+              voices.where((voice) => voice["name"].contains("es")).toList();
+          _currentVoice = _voices.first;
+          setVoice(_currentVoice!);
+        });
+      } catch (e) {
+        // print(e);
+      }
+    });
+    // print(await _flutterTts.getLanguages);
+  }
+
+  void setVoice(Map voice) {
+    _flutterTts.setVoice({"name": voice["name"], "locale": voice["locale"]});
   }
 
   void _startListening() async {
@@ -68,12 +116,12 @@ class _HomePageState extends State<HomePage> {
                     : _speechEnabled
                         ? "Pulsa el microfono para iniciar a grabar..."
                         : "Speech not available",
-                style: TextStyle(fontSize: 20.0),
+                style: const TextStyle(fontSize: 20.0),
               ),
             ),
             Expanded(
               child: Container(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Text(
                   _wordsSpoken,
                   style: const TextStyle(
@@ -90,7 +138,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 child: Text(
                   "Confidence: ${(_confidenceLevel * 100).toStringAsFixed(1)}%",
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w200,
                   ),
@@ -99,21 +147,29 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.miniCenterFloat,
+      floatingActionButtonLocation: FloatingActionButtonLocation.startDocked,
       floatingActionButton: FloatingActionButton(
-        onPressed: _speechToText.isListening ? _stopListening : _startListening,
-        tooltip: 'Listen',
-        child: Icon(
-          _speechToText.isNotListening ? Icons.mic_off : Icons.mic,
-          color: Colors.white,
-        ),
-        backgroundColor: Colors.blue,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(
-            Radius.circular(20),
+          onPressed: () {
+            _speechToText.isListening ? _stopListening() : _startListening();
+            // _flutterTts.speak("hola que hace");
+          },
+          tooltip: 'Listen',
+          backgroundColor: Colors.blue,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(
+              Radius.circular(20),
+            ),
           ),
-        )
-      ),
+          child: Icon(
+            _speechToText.isNotListening ? Icons.mic_off : Icons.mic,
+            color: Colors.white,
+          )),
+      // floatingActionButton: const Column(
+      //   mainAxisAlignment: MainAxisAlignment.end,
+      //   children: [
+      //     ButtonJ(),
+      //   ],
+      // ),
     );
   }
 }
